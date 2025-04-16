@@ -1,0 +1,218 @@
+---
+title: "STA 141a Final Project"
+author: "Brett Loy"
+date: "2023-08-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Abstract(what you did on the project(3-4 pages))
+Introduction
+- questions of interest:
+Will Stephen Curry's record of 402 3 pointers made in a single season ever be broken?
+- information of data source
+- existing research and known results
+- impact of results along with real world
+
+Exploratory Analysis(describe the data)
+-basic description statistics(missing values(what to do with them can replace with mean or median))
+-data visualization(show features/patterns in data)
+
+Methodology
+-Ex) predictive model(how you apply statistical model into your data)
+  1)fit model
+  2)report fitted model
+ 
+Result
+-prediction performance and evaluate it
+
+Discussion, Conclusion
+-main funding, next steps
+
+
+what are the chances of that nba players that will pass lebron james in points?
+factors: time spent in league(games and years played), playstyle changes(3 pt line, overall shift in focus on offense, potential 4 point line)
+
+always things that you can't predict: injuries, adjustments, bench players coming in and out of rotation,
+trades?
+
+disclaimer: data is only from 1999-2020 . Three pointers are more common now
+filter data so it only contains data from 1999-2023/combine datasets together
+```{r}
+library(readr)
+
+#read data in
+nba_data <- #1999-2020
+read_csv("/Users/brettloy/Desktop/STA 141A/Datasets/players_stats_by_season_full_details.csv")
+
+nba_extra_shooting <- #1997-2023
+  read_csv("/Users/brettloy/Desktop/STA 141A/Datasets/Player Shooting.csv")
+```
+
+
+```{r}
+library(dplyr)
+library(stringr)
+#wrangle the data to end with 1 data frame to work with
+years_filter_out <- c("1997", "1998", "1999", "2021", "2022", "2023")
+
+nba_extra_shooting<- nba_extra_shooting %>% 
+  #choose which columns from the data set needed to keep
+  select("season", "player", "fg_percent_from_x3p_range", "percent_assisted_x3p_fg",
+         "corner_3_point_percent", "percent_corner_3s_of_3pa")%>%
+  #filter out seasons that aren't needed
+  filter(!(season %in% years_filter_out))%>%
+  #rename columns
+  rename("percent_of_3PM_assisted"="percent_assisted_x3p_fg", "three_PM_percentage"=
+"fg_percent_from_x3p_range", "percent_of_3PA_incorner"="percent_corner_3s_of_3pa", 
+"percent_of_3PM_incorner" = "corner_3_point_percent", "Season" = "season", "Player"="player")
+
+#regular expression, subset, to keep the last 4 digits of season
+nba_data<- nba_data %>%
+  #choose which columns from the data set needed to keep
+  select("League", "Season", "Player", "GP", "MIN", "3PM", "3PA", "PTS" ) %>%
+  #filter out 
+  filter(League=="NBA")%>%
+  rename("three_point_makes" = "3PM", "three_point_attempts" = "3PA")
+nba_data$Season <- str_extract(nba_data$Season, "\\d{4}$")
+#change "Season" column to character in order to join
+nba_extra_shooting$Season<- as.character(nba_extra_shooting$Season)
+#merge data frames sorting by "Season" and "Player"
+join_df <- left_join(nba_data, nba_extra_shooting, by = c("Season", "Player"))
+
+join_df
+```
+
+```{r}
+library(ggplot2) 
+library(ggthemes)
+library(ggrepel)
+library(ggsci)
+
+curry_df <- join_df %>% filter(Season ==2016) %>% 
+  filter(Player == "Stephen Curry") %>%
+  mutate(threes_per_game = three_point_makes/GP)
+curry_df #Record: 402 3PM, 886 3PA
+```
+
+
+```{r}
+#3 point makes per game of players
+plot_mper_game<- join_df %>% filter(three_point_makes>=250) %>%
+  mutate(threes_mper_game = three_point_makes/GP) %>%
+  ggplot(aes(threes_mper_game, Player, label = Season))+
+  geom_label()+
+  ggtitle("3 Pointers Made per Game by Players who've come close to the record")+
+  xlab("3 Pointers Made per Game")+
+  theme_clean()
+plot_mper_game
+#3 point attempts per game of players
+plot_aper_game<- join_df %>% filter(three_point_makes>=250) %>%
+  mutate(threes_aper_game = three_point_attempts/GP) %>%
+  ggplot(aes(threes_aper_game, Player, label = Season))+
+  geom_label()+
+  ggtitle("3 Pointers Attempted per Game by Players who've come close to the record")+
+  xlab("3 Pointers Attempted per Game")+
+  theme_clean()
+plot_aper_game
+```
+
+
+```{r}
+#players who have come close
+
+plot_close<- join_df %>% filter(three_point_makes>=250) %>%
+  arrange(desc(three_point_makes))%>%
+  ggplot(aes(three_point_makes, Player, label = Season, color = Player))+
+  geom_label()+
+  ggtitle("Players in the Past Who've Come Close to the Record")+
+  xlab("3 Pointers Made")+
+  theme_clean()
+plot_close
+
+avg_3pt_per <- join_df %>% group_by(Season)%>% filter(three_point_makes>=275)%>%
+  ggplot(aes(Season, three_PM_percentage, label = Player, color = Player))+
+  ggtitle("3 Point Percentages of players who've made more than 275 Threes")+
+  geom_label()+
+  theme_clean()
+avg_3pt_per
+
+corner_3pt_per <- join_df %>% group_by(Season)%>% filter(three_point_makes>=270)%>%
+  ggplot(aes(Season, percent_of_3PM_incorner, label = Player, color = Player))+
+  ggtitle("3 Pt Percentages from Corners of players who've made more than 270 Threes")+
+  geom_label()+
+  theme_clean()
+corner_3pt_per
+```
+
+
+```{r}
+#data shows the increase in 3s made and attempted throughout the years
+filtered_season1 <- subset(join_df, Season %in% c(2000, 2005, 2010, 2015, 2020))
+
+three_attempt_2000_2020<- filtered_season1 %>% 
+  ggplot(aes(three_point_attempts))+
+  geom_bar(width = 6, color = "darkblue", fill = "blue")+
+  ggtitle("3 Point Shots Attempted in 2000, 2005, 2010, 2015, and 2020")+
+  xlab("3 Pointers Attempted")+
+  ylab("Number of Players")+
+  facet_wrap(~Season)+
+  theme_clean()
+three_attempt_2000_2020
+
+three_made_2000_2020<- filtered_season1 %>% 
+  ggplot(aes(three_point_makes))+
+  geom_bar(width = 6, color = "darkred", fill = "red")+
+  ggtitle("3 Point Shots Made in 2000, 2005, 2010, 2015, and 2020")+
+  xlab("3 Pointers Made")+
+  ylab("Number of Players")+
+  facet_wrap(~Season)+
+  theme_clean()
+three_made_2000_2020
+
+
+```
+
+
+```{r}
+avg_data_makes <- join_df %>%
+  group_by(Season) %>%
+  summarize(Avg_3PM = mean(three_point_makes)) %>%
+  ggplot(aes(Season, Avg_3PM))+
+  geom_point()+
+  ggtitle("Average 3 Point Makes from 2000-2020")+
+  ylab("Average number of 3 pt Makes")+
+  theme_clean()
+avg_data_makes
+
+avg_data_attempts <- join_df %>%
+  group_by(Season) %>%
+  summarize(Avg_3PA = mean(three_point_attempts)) %>%
+  ggplot(aes(Season, Avg_3PA))+
+  geom_point()+
+  ggtitle("Average 3 Point Attempts from 2000-2020")+
+  ylab("Average number of 3 pt Attempts")+
+  theme_clean()
+avg_data_attempts
+
+```
+
+```{r}
+join_df%>% filter(Season>= 2015)%>% 
+  mutate(threes_aper_game = three_point_makes/GP)%>% 
+  
+predict_model <- lm(three_point_makes~three_PM_percentage + threes_aper_game, data = join_df )
+
+```
+
+  
+  
+  
+  
+  
+  
+  
+  
